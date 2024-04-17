@@ -6,15 +6,18 @@ package group.chatting.application;
  */
 
 import javax.swing.*;
-import javax.swing.border.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.*;
-import java.util.*;
-import java.text.*;
-import java.net.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.*;
+import java.net.Socket;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.HashMap;
 
-import static java.lang.System.out;
 
 public class UserOne implements ActionListener, Runnable {
     private String clientId;  // Define clientId
@@ -158,15 +161,42 @@ public class UserOne implements ActionListener, Runnable {
         }
     }
 
-    private void closeResources() {
+    private void sendMessage(String message) {
         try {
-            if (writer != null) writer.close();
-            if (reader != null) reader.close();
-            if (socket != null) socket.close();
+            if (socket != null && !socket.isClosed() && socket.isConnected()) {
+                writer.write(message);
+                writer.newLine();
+                writer.flush();
+            } else {
+                // Attempt to reconnect or notify the user
+                JOptionPane.showMessageDialog(f, "Connection is closed. Trying to reconnect...", "Connection Error", JOptionPane.ERROR_MESSAGE);
+                establishConnection();  // Try to re-establish connection
+            }
         } catch (IOException e) {
-            e.printStackTrace();
+            JOptionPane.showMessageDialog(f, "Error sending message: " + e.getMessage(), "Network Error", JOptionPane.ERROR_MESSAGE);
+            closeResources();  // Cleanup resources
         }
     }
+    private void closeResources() {
+        try {
+            if (writer != null) {
+                writer.close();
+                writer = null;
+            }
+            if (reader != null) {
+                reader.close();
+                reader = null;
+            }
+            if (socket != null) {
+                socket.close();
+                socket = null;
+            }
+        } catch (IOException e) {
+            System.err.println("Error closing resources: " + e.getMessage());
+        }
+    }
+
+    private HashMap<String, JLabel> readReceiptLabels = new HashMap<>();
 
     public class MessageUtils {
         private static int messageIdCounter = 1;
@@ -185,12 +215,12 @@ public class UserOne implements ActionListener, Runnable {
 
             // Extract the message directly, apply HTML only for local display if needed
             String messageContent = text.getText().trim();
-            String messageId = UserOne.MessageUtils.generateMessageId(); // Generate unique IDs
+            String messageId = MessageUtils.generateMessageId(); // Generate unique IDs
             String formattedMessage = messageId + "|" + messageContent; // Sending format
 
             // Create the display panel for the message, applying HTML formatting here if necessary for display
             String displayContent = "<html><p>" + name + "</p><p>" + messageContent + "</p></html>";
-            JPanel p2 = formatLabel(displayContent);
+            JPanel p2 = formatLabel(messageContent, "");
 
             a1.setLayout(new BorderLayout());
 
@@ -208,6 +238,7 @@ public class UserOne implements ActionListener, Runnable {
                 this.writer.newLine();
                 this.writer.flush();
             } catch (Exception e) {
+                JOptionPane.showMessageDialog(f, "Error sending message: " + e.getMessage(), "Network Error", JOptionPane.ERROR_MESSAGE);
                 e.printStackTrace();
             }
 
@@ -222,75 +253,226 @@ public class UserOne implements ActionListener, Runnable {
         }
     }
 
-    public static JPanel formatLabel(String out) {
+    public static JPanel formatLabel(String out, String readReceiptText) {
         JPanel panel = new JPanel();
-        panel.setBackground(Color.WHITE);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(Color.WHITE);
 
         JLabel output = new JLabel("<html><p style=\"width: 150px\">" + out + "</p></html>");
         output.setFont(new Font("Tahoma", Font.PLAIN, 16));
-        output.setBackground(new Color(37, 211, 102)); // Example color
+        output.setBackground(new Color(37, 211, 102));
         output.setOpaque(true);
         output.setBorder(new EmptyBorder(0, 15, 0, 50));
-
         panel.add(output);
 
+        // This sub-panel will use FlowLayout to keep items in line
+        JPanel subPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        subPanel.setBackground(Color.WHITE);
+
+        // Label for read receipt text
+        //JLabel readLabel = new JLabel(readReceiptText);
+        JLabel readLabel = new JLabel("Test Read Receipt");
+        readLabel.setFont(new Font("Tahoma", Font.PLAIN, 12));
+        readLabel.setForeground(Color.GRAY);
+
+        // Time label
         Calendar cal = Calendar.getInstance();
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
+        JLabel time = new JLabel(sdf.format(cal.getTime()));
+        time.setFont(new Font("Tahoma", Font.PLAIN, 12));
 
-        JLabel time = new JLabel();
-        time.setText(sdf.format(cal.getTime()));
+        // Add both labels to the sub-panel
+        subPanel.add(readLabel);
+        subPanel.add(time);
 
-        panel.add(time);
-
+        panel.add(subPanel);
         return panel;
     }
+
+
+
 
     public void run() {
         try {
             String msg;
             while ((msg = reader.readLine()) != null) {
-                System.out.println("Received raw message: " + msg);  // Improved logging for debugging
-
-                // Handle potential system or control messages
-                if (msg.startsWith("ClientID:")) {
-                    this.clientId = msg.split(":")[1].trim();
-                    continue;  // Skip further processing for this loop iteration
-                }
-
-                // Process regular chat messages
-                String[] parts = msg.split("\\|", 2);
-                if (parts.length == 2) {
-                    String senderId = parts[0].trim();
-                    String messageContent = parts[1].trim();
-
-                    if (!senderId.equals(this.clientId)) {  // Check sender ID to ensure message is not from self
-                        SwingUtilities.invokeLater(() -> {
-                            JPanel panel = formatLabel(messageContent);
-                            JPanel left = new JPanel(new BorderLayout());
-                            left.setBackground(Color.WHITE);
-                            left.add(panel, BorderLayout.LINE_START);
-                            vertical.add(left);
-                            a1.add(vertical, BorderLayout.PAGE_START);
-
-                            a1.revalidate();
-                            a1.repaint();
-
-                            JOptionPane.showMessageDialog(f, "New message received");
-                            sendReadReceipt(senderId);  // Sending only the sender ID for the read receipt
-                        });
-                    }
-                } else {
-                    System.err.println("Incorrect message format received: " + msg);
+                // Existing handling
+                if (msg.startsWith("Read:")) {
+                    System.out.println("Read receipt received: " + msg);
+                    handleReadReceipt(msg);
+                    continue;
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
-            JOptionPane.showMessageDialog(f, "Error: " + e.getMessage(), "Connection Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void sendReadReceipt(String senderId) {
+    private void handleReadReceipt(String msg) {
+        System.out.println("Handling read receipt: " + msg);
+        String[] parts = msg.split(" by ");
+        if (parts.length == 2) {
+            String messageId = parts[0].substring(5);  // Removes "Read:" prefix
+            String clientId = parts[1];
+            System.out.println("Read receipt for message ID: " + messageId + " by client: " + clientId);
+            updateReadReceiptUI(messageId, "Read by " + clientId);
+        } else {
+            System.err.println("Read receipt format error: " + msg);
+        }
+    }
+
+    private void updateReadReceiptUI(String messageId, String readText) {
+        SwingUtilities.invokeLater(() -> {
+            JLabel readReceiptLabel = readReceiptLabels.get(messageId);
+            if (readReceiptLabel != null) {
+                readReceiptLabel.setText(readText);
+                readReceiptLabel.revalidate();
+                readReceiptLabel.repaint();
+                System.out.println("UI updated for message ID: " + messageId + " with text: " + readText);
+            } else {
+                System.err.println("No message panel found for ID: " + messageId);
+            }
+        });
+    }
+
+
+
+    private void updateReadReceipt(String messageId, String readText) {
+        System.out.println("Attempting to update read receipt for message ID: " + messageId);
+        JLabel readReceiptLabel = readReceiptLabels.get(messageId);
+        if (readReceiptLabel != null) {
+            SwingUtilities.invokeLater(() -> {
+                readReceiptLabel.setText(readText);
+                a1.revalidate();
+                a1.repaint();
+                System.out.println("Updated read receipt for " + messageId + " to '" + readText + "'");
+            });
+        } else {
+            System.err.println("Failed to find read receipt label for message ID: " + messageId);
+            System.err.println("Currently tracked message IDs: " + readReceiptLabels.keySet());
+        }
+    }
+
+
+
+    private void updateMessagePanel(String details) {
+        String[] parts = details.split(" by ");
+        if (parts.length == 2) {
+            String messageId = parts[0].trim();
+            String readerId = parts[1].trim();
+
+            JLabel receiptLabel = readReceiptLabels.get(messageId);
+            if (receiptLabel != null) {
+                receiptLabel.setText("Read by " + readerId);
+                receiptLabel.revalidate();
+                receiptLabel.repaint();
+            }
+        }
+    }
+
+
+    /*private void displayMessage(String msg) {
+        String[] parts = msg.split("\\|", 2);
+        if (parts.length == 2) {
+            String messageId = parts[0].trim();
+            String messageContent = parts[1].trim();
+
+            JPanel messagePanel = formatMessagePanel(messageContent, messageId);
+            SwingUtilities.invokeLater(() -> {
+                vertical.add(messagePanel);
+                a1.add(vertical, BorderLayout.PAGE_START);
+                a1.revalidate();
+                a1.repaint();
+            });
+        } else {
+            System.err.println("Incorrect message format received: " + msg);
+        }
+    }*/
+    public void displayMessage(String message, String messageId) {
+        JPanel messagePanel = new JPanel();
+        messagePanel.setLayout(new BoxLayout(messagePanel, BoxLayout.Y_AXIS));
+        messagePanel.setBackground(Color.WHITE);
+
+        JLabel messageLabel = new JLabel("<html>" + message + "</html>");
+        messageLabel.setFont(new Font("Tahoma", Font.PLAIN, 16));
+        messageLabel.setBorder(new EmptyBorder(5, 5, 0, 5));
+
+        JLabel readReceiptLabel = new JLabel(""); // Initially empty, for read receipts
+        readReceiptLabel.setFont(new Font("Tahoma", Font.PLAIN, 10));
+        readReceiptLabel.setForeground(Color.GRAY);
+        readReceiptLabel.setBorder(new EmptyBorder(0, 5, 5, 5));
+
+        messagePanel.add(messageLabel);
+        messagePanel.add(readReceiptLabel);
+
+        // Store the read receipt label with the messageId as the key
+        readReceiptLabels.put(messageId, readReceiptLabel);
+
+        // Add to the vertical Box layout
+        vertical.add(messagePanel);
+        vertical.add(Box.createVerticalStrut(15)); // Adds space between messages
+
+        // Since `a1` is your panel that should contain all messages
+        a1.add(vertical, BorderLayout.PAGE_START);
+
+        // Ensure updates to the UI are reflected
+        a1.revalidate();
+        a1.repaint();
+    }
+
+
+
+    /*private JPanel formatMessagePanel(String message, String messageId) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+
+        JLabel messageLabel = new JLabel("<html>" + message + "</html>");
+        messageLabel.setFont(new Font("Tahoma", Font.PLAIN, 16));
+        messageLabel.setBorder(new EmptyBorder(5, 5, 0, 5)); // top, left, bottom, right padding
+
+        // Ensure label is always initialized, even if empty
+        JLabel readReceiptLabel = new JLabel(""); // Initially empty
+        readReceiptLabel.setFont(new Font("Tahoma", Font.PLAIN, 10));
+        readReceiptLabel.setForeground(Color.GRAY);
+        readReceiptLabel.setBorder(new EmptyBorder(0, 5, 5, 5));
+
+        panel.add(messageLabel);
+        panel.add(readReceiptLabel);
+
+        // Storing the label for updating read receipts later
+        messagePanels.put(messageId, readReceiptLabel);
+
+        return panel;
+    }*/
+    private JPanel formatMessagePanel(String message, String messageId) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(Color.WHITE);
+
+        JLabel messageLabel = new JLabel("<html>" + message + "</html>");
+        messageLabel.setFont(new Font("Tahoma", Font.PLAIN, 16));
+        messageLabel.setBorder(new EmptyBorder(5, 5, 0, 5));
+
+        JLabel readReceiptLabel = new JLabel(""); // Initially empty, for read receipts
+        readReceiptLabel.setFont(new Font("Tahoma", Font.PLAIN, 10));
+        readReceiptLabel.setForeground(Color.GRAY);
+        readReceiptLabel.setBorder(new EmptyBorder(0, 5, 5, 5));
+
+        panel.add(messageLabel);
+        panel.add(readReceiptLabel);
+
+        // Register message panel with its ID for later updates
+        readReceiptLabels.put(messageId, readReceiptLabel);
+        System.out.println("Message panel registered: " + messageId);
+
+        return panel;
+    }
+
+
+
+    /*private void sendReadReceipt(String senderId) {
         try {
             writer.write("Read:" + senderId + "," + this.clientId);
             writer.newLine();
@@ -298,7 +480,20 @@ public class UserOne implements ActionListener, Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }*/
+    private void sendReadReceipt(String senderId) {
+        try {
+            String messageId = MessageUtils.generateMessageId();  // Assuming generateMessageId() is a method that returns a unique ID
+            String readReceipt = "Read:" + messageId + " by " + this.clientId;
+            writer.write(readReceipt);
+            writer.newLine();
+            writer.flush();
+            System.out.println("Sent read receipt: " + readReceipt);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
+
 
     private String extractMessageId(String message) {
         // Split the message into two parts: the ID and the content
@@ -310,7 +505,7 @@ public class UserOne implements ActionListener, Runnable {
         }
     }
 
-    
+
     public static void main(String[] args) {
         UserOne one = new UserOne();
         Thread t1 = new Thread(one);
