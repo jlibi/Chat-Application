@@ -232,7 +232,7 @@ public class Server implements Runnable {
         this.clientId = "Client " + clientIdCounter.getAndIncrement();
         try {
             writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-            writer.write("ClientID:" + clientId);
+            writer.write(":" + clientId);
             writer.newLine();
             writer.flush();
             clientWriters.put(clientId, writer);

@@ -96,7 +96,7 @@ public class UserOne implements ActionListener, Runnable {
         name.setFont(new Font("SAN_SERIF", Font.BOLD, 18));
         p1.add(name);
 
-        JLabel status = new JLabel("Kaleen, Guddu, Bablu, Sweety, IG Dubey, Shukla");
+        JLabel status = new JLabel("Kaleen, Guddu");
         status.setBounds(110, 35, 160, 18);
         status.setForeground(Color.WHITE);
         status.setFont(new Font("SAN_SERIF", Font.BOLD, 14));
@@ -292,7 +292,7 @@ public class UserOne implements ActionListener, Runnable {
 
 
 
-    public void run() {
+    /*public void run() {
         try {
             String msg;
             while ((msg = reader.readLine()) != null) {
@@ -305,6 +305,56 @@ public class UserOne implements ActionListener, Runnable {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }*/
+
+    public void run() {
+        try {
+            String msg;
+            while ((msg = reader.readLine()) != null) {
+                System.out.println("Received raw message: " + msg);  // Improved logging for debugging
+
+                // Handle potential system or control messages
+                if (msg.startsWith("ClientID:")) {
+                    this.clientId = msg.split(":")[1].trim();
+                    continue;  // Skip further processing for this loop iteration
+                }
+
+                // Check if the message is a read receipt
+                if (msg.startsWith("Read:")) {
+                    handleReadReceipt(msg);
+                    continue;  // Skip further processing for read receipts
+                }
+
+                // Process regular chat messages
+                String[] parts = msg.split("\\|", 2);
+                if (parts.length == 2) {
+                    String senderId = parts[0].trim();
+                    String messageContent = parts[1].trim();
+
+                    if (!senderId.equals(this.clientId)) {  // Check sender ID to ensure message is not from self
+                        SwingUtilities.invokeLater(() -> {
+                            JPanel panel = formatLabel(messageContent, "");
+                            JPanel left = new JPanel(new BorderLayout());
+                            left.setBackground(Color.WHITE);
+                            left.add(panel, BorderLayout.LINE_START);
+                            vertical.add(left);
+                            a1.add(vertical, BorderLayout.PAGE_START);
+
+                            a1.revalidate();
+                            a1.repaint();
+
+                            JOptionPane.showMessageDialog(f, "New message received");
+                            sendReadReceipt(senderId);  // Sending only the sender ID for the read receipt
+                        });
+                    }
+                } else {
+                    System.err.println("Incorrect message format received: " + msg);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(f, "Error: " + e.getMessage(), "Connection Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -419,58 +469,6 @@ public class UserOne implements ActionListener, Runnable {
         a1.revalidate();
         a1.repaint();
     }
-
-
-
-    /*private JPanel formatMessagePanel(String message, String messageId) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
-
-        JLabel messageLabel = new JLabel("<html>" + message + "</html>");
-        messageLabel.setFont(new Font("Tahoma", Font.PLAIN, 16));
-        messageLabel.setBorder(new EmptyBorder(5, 5, 0, 5)); // top, left, bottom, right padding
-
-        // Ensure label is always initialized, even if empty
-        JLabel readReceiptLabel = new JLabel(""); // Initially empty
-        readReceiptLabel.setFont(new Font("Tahoma", Font.PLAIN, 10));
-        readReceiptLabel.setForeground(Color.GRAY);
-        readReceiptLabel.setBorder(new EmptyBorder(0, 5, 5, 5));
-
-        panel.add(messageLabel);
-        panel.add(readReceiptLabel);
-
-        // Storing the label for updating read receipts later
-        messagePanels.put(messageId, readReceiptLabel);
-
-        return panel;
-    }*/
-    private JPanel formatMessagePanel(String message, String messageId) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(Color.WHITE);
-
-        JLabel messageLabel = new JLabel("<html>" + message + "</html>");
-        messageLabel.setFont(new Font("Tahoma", Font.PLAIN, 16));
-        messageLabel.setBorder(new EmptyBorder(5, 5, 0, 5));
-
-        JLabel readReceiptLabel = new JLabel(""); // Initially empty, for read receipts
-        readReceiptLabel.setFont(new Font("Tahoma", Font.PLAIN, 10));
-        readReceiptLabel.setForeground(Color.GRAY);
-        readReceiptLabel.setBorder(new EmptyBorder(0, 5, 5, 5));
-
-        panel.add(messageLabel);
-        panel.add(readReceiptLabel);
-
-        // Register message panel with its ID for later updates
-        readReceiptLabels.put(messageId, readReceiptLabel);
-        System.out.println("Message panel registered: " + messageId);
-
-        return panel;
-    }
-
-
 
     /*private void sendReadReceipt(String senderId) {
         try {

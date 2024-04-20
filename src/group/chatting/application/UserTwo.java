@@ -418,7 +418,7 @@ public class UserTwo implements ActionListener, Runnable {
         name.setFont(new Font("SAN_SERIF", Font.BOLD, 18));
         p1.add(name);
 
-        JLabel status = new JLabel("Guddu, Kaleen, Bablu, Sweety, IG Dubey, Shukla");
+        JLabel status = new JLabel("Guddu, Kaleen");
         status.setBounds(110, 35, 160, 18);
         status.setForeground(Color.WHITE);
         status.setFont(new Font("SAN_SERIF", Font.BOLD, 14));
@@ -528,7 +528,7 @@ public class UserTwo implements ActionListener, Runnable {
         }
     }*/
 
-    private final HashMap<String, JLabel> messagePanels = new HashMap<>();
+    private HashMap<String, JLabel> readReceiptLabels = new HashMap<>();
 
 
     public class MessageUtils {
@@ -603,7 +603,8 @@ public class UserTwo implements ActionListener, Runnable {
         subPanel.setBackground(Color.WHITE);
 
         // Label for read receipt text
-        JLabel readLabel = new JLabel(readReceiptText);
+        //JLabel readLabel = new JLabel(readReceiptText);
+        JLabel readLabel = new JLabel("Test Read Receipt");
         readLabel.setFont(new Font("Tahoma", Font.PLAIN, 12));
         readLabel.setForeground(Color.GRAY);
 
@@ -686,11 +687,12 @@ public class UserTwo implements ActionListener, Runnable {
         }
     }*/
     private void handleReadReceipt(String msg) {
-        System.out.println("Handling read receipt: " + msg);  // Debug output
+        System.out.println("Handling read receipt: " + msg);
         String[] parts = msg.split(" by ");
         if (parts.length == 2) {
             String messageId = parts[0].substring(5);  // Removes "Read:" prefix
             String clientId = parts[1];
+            System.out.println("Read receipt for message ID: " + messageId + " by client: " + clientId);
             updateReadReceiptUI(messageId, "Read by " + clientId);
         } else {
             System.err.println("Read receipt format error: " + msg);
@@ -698,22 +700,22 @@ public class UserTwo implements ActionListener, Runnable {
     }
 
     private void updateReadReceiptUI(String messageId, String readText) {
-        JLabel readReceiptLabel = messagePanels.get(messageId);
-        if (readReceiptLabel != null) {
-            SwingUtilities.invokeLater(() -> {
+        SwingUtilities.invokeLater(() -> {
+            JLabel readReceiptLabel = readReceiptLabels.get(messageId);
+            if (readReceiptLabel != null) {
                 readReceiptLabel.setText(readText);
                 readReceiptLabel.revalidate();
                 readReceiptLabel.repaint();
                 System.out.println("UI updated for message ID: " + messageId + " with text: " + readText);
-            });
-        } else {
-            System.err.println("No message panel found for ID: " + messageId);
-        }
+            } else {
+                System.err.println("No message panel found for ID: " + messageId);
+            }
+        });
     }
 
     private void updateReadReceipt(String messageId, String readText) {
         System.out.println("Attempting to update read receipt for message ID: " + messageId);
-        JLabel readReceiptLabel = messagePanels.get(messageId);
+        JLabel readReceiptLabel = readReceiptLabels.get(messageId);
         if (readReceiptLabel != null) {
             SwingUtilities.invokeLater(() -> {
                 readReceiptLabel.setText(readText);
@@ -723,7 +725,7 @@ public class UserTwo implements ActionListener, Runnable {
             });
         } else {
             System.err.println("Failed to find read receipt label for message ID: " + messageId);
-            System.err.println("Currently tracked message IDs: " + messagePanels.keySet());
+            System.err.println("Currently tracked message IDs: " + readReceiptLabels.keySet());
         }
     }
 
@@ -736,7 +738,7 @@ public class UserTwo implements ActionListener, Runnable {
             String messageId = parts[0].trim();
             String readerId = parts[1].trim();
 
-            JLabel receiptLabel = messagePanels.get(messageId);
+            JLabel receiptLabel = readReceiptLabels.get(messageId);
             if (receiptLabel != null) {
                 receiptLabel.setText("Read by " + readerId);
                 receiptLabel.revalidate();
@@ -829,7 +831,7 @@ public class UserTwo implements ActionListener, Runnable {
         panel.add(readReceiptLabel);
 
         // Register message panel with its ID for later updates
-        messagePanels.put(messageId, readReceiptLabel);
+        readReceiptLabels.put(messageId, readReceiptLabel);
         System.out.println("Message panel registered: " + messageId);
 
         return panel;
